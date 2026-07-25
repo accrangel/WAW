@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PASSEIO — Visualizador Arquitetônico VR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --graphite:#14171c;
+    --slate:#1e232b;
+    --steel:#2b323d;
+    --mist:#8d97a5;
+    --paper:#e8ebef;
+    --brass:#c8a24a;
+    --signal:#4ad0a0;
+    --alert:#e0664a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:var(--graphite);color:var(--paper);
+    font-family:'Space Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  canvas{display:block}
+
+  /* ---------- painel de instrumentos ---------- */
+  #panel{
+    position:fixed;top:0;left:0;height:100%;width:330px;max-width:88vw;
+    background:linear-gradient(180deg,#191d24 0%,#14171c 100%);
+    border-right:1px solid #2b323d;
+    display:flex;flex-direction:column;z-index:20;
+    transition:transform .32s cubic-bezier(.4,0,.2,1);
+  }
+  #panel.hidden{transform:translateX(-100%)}
+
+  .brand{padding:20px 22px 16px;border-bottom:1px solid #262c36}
+  .brand h1{font-size:19px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
+  .brand h1 span{color:var(--brass)}
+  .brand p{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--mist);
+    margin-top:5px;letter-spacing:.05em}
+
+  .scroll{flex:1;overflow-y:auto;padding:4px 0 24px}
+  .scroll::-webkit-scrollbar{width:6px}
+  .scroll::-webkit-scrollbar-thumb{background:#2b323d;border-radius:3px}
+
+  .block{padding:16px 22px;border-bottom:1px solid #21262e}
+  .block-label{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--mist);margin-bottom:12px;display:flex;
+    justify-content:space-between;align-items:center}
+  .block-label b{color:var(--brass);font-weight:500}
+
+  /* dropzone */
+  #drop{
+    border:1px dashed #3a424f;border-radius:6px;padding:22px 14px;text-align:center;
+    cursor:pointer;transition:.18s;background:#181c23;
+  }
+  #drop:hover,#drop.over{border-color:var(--brass);background:#1d2129}
+  #drop .big{font-size:13px;font-weight:500;margin-bottom:5px}
+  #drop .small{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--mist);line-height:1.6}
+  input[type=file]{display:none}
+
+  .url-row{display:flex;gap:6px;margin-top:10px}
+  .url-row input{
+    flex:1;background:#181c23;border:1px solid #2b323d;border-radius:5px;
+    padding:8px 10px;color:var(--paper);font-family:'IBM Plex Mono',monospace;font-size:11px;
+  }
+  .url-row input:focus{outline:none;border-color:var(--brass)}
+  .url-row button{
+    background:#2b323d;border:none;border-radius:5px;color:var(--paper);
+    padding:0 13px;cursor:pointer;font-size:11px;font-family:'Space Grotesk',sans-serif;
+  }
+  .url-row button:hover{background:var(--brass);color:#14171c}
+
+  /* sliders */
+  .ctl{margin-bottom:15px}
+  .ctl:last-child{margin-bottom:0}
+  .ctl-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px}
+  .ctl-head label{font-size:12.5px;color:#c2c9d3}
+  .ctl-head output{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--brass)}
+  input[type=range]{
+    -webkit-appearance:none;width:100%;height:2px;background:#333b47;border-radius:2px;outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+    background:var(--paper);cursor:pointer;border:2px solid #14171c;
+    box-shadow:0 0 0 1px #4a5462;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px;height:13px;border-radius:50%;background:var(--paper);
+    cursor:pointer;border:2px solid #14171c;
+  }
+
+  /* toggles */
+  .tog{display:flex;justify-content:space-between;align-items:center;
+    padding:9px 0;font-size:12.5px;color:#c2c9d3;cursor:pointer}
+  .tog .sw{width:34px;height:19px;border-radius:10px;background:#333b47;
+    position:relative;transition:.2s;flex-shrink:0}
+  .tog .sw::after{content:'';position:absolute;top:2.5px;left:2.5px;width:14px;height:14px;
+    border-radius:50%;background:#8d97a5;transition:.2s}
+  .tog.on .sw{background:rgba(200,162,74,.35)}
+  .tog.on .sw::after{transform:translateX(15px);background:var(--brass)}
+
+  /* presets */
+  .presets{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+  .preset{
+    background:#181c23;border:1px solid #2b323d;border-radius:5px;padding:9px 6px;
+    font-size:11px;color:#c2c9d3;cursor:pointer;text-align:center;transition:.15s;
+    font-family:'Space Grotesk',sans-serif;
+  }
+  .preset:hover{border-color:var(--brass);color:var(--paper)}
+  .preset.active{background:rgba(200,162,74,.13);border-color:var(--brass);color:var(--brass)}
+
+  /* botões grandes */
+  .act{
+    width:100%;padding:12px;border:none;border-radius:6px;cursor:pointer;
+    font-family:'Space Grotesk',sans-serif;font-size:12.5px;font-weight:500;
+    letter-spacing:.05em;transition:.16s;margin-bottom:8px;
+  }
+  .act.primary{background:var(--brass);color:#14171c;font-weight:700}
+  .act.primary:hover{filter:brightness(1.12)}
+  .act.primary:disabled{background:#2b323d;color:#5c6675;cursor:not-allowed;filter:none}
+  .act.ghost{background:#1e232b;color:#c2c9d3;border:1px solid #2b323d}
+  .act.ghost:hover{border-color:#4a5462}
+
+  /* rodapé de status */
+  .stat{padding:12px 22px;border-top:1px solid #262c36;background:#11141a;
+    font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--mist);line-height:1.7}
+  .stat .row{display:flex;justify-content:space-between}
+  .stat b{color:#c2c9d3;font-weight:500}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--alert);margin-right:5px}
+  .dot.ok{background:var(--signal)}
+
+  /* toggle do painel */
+  #tab{
+    position:fixed;top:16px;left:346px;z-index:21;width:38px;height:38px;
+    background:rgba(20,23,28,.9);border:1px solid #2b323d;border-radius:6px;
+    color:var(--paper);cursor:pointer;font-size:15px;
+    display:flex;align-items:center;justify-content:center;
+    transition:left .32s cubic-bezier(.4,0,.2,1);backdrop-filter:blur(8px);
+  }
+  #tab.closed{left:16px}
+
+  /* overlay de carga */
+  #load{
+    position:fixed;inset:0;background:rgba(20,23,28,.93);z-index:50;
+    display:none;align-items:center;justify-content:center;flex-direction:column;
+    backdrop-filter:blur(6px);
+  }
+  #load.on{display:flex}
+  .ring{width:42px;height:42px;border:2px solid #2b323d;border-top-color:var(--brass);
+    border-radius:50%;animation:spin .85s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #load p{margin-top:18px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;
+    color:var(--mist);letter-spacing:.06em}
+
+  /* HUD */
+  #hud{
+    position:fixed;right:16px;bottom:16px;z-index:15;
+    background:rgba(20,23,28,.86);border:1px solid #2b323d;border-radius:6px;
+    padding:11px 14px;font-family:'IBM Plex Mono',monospace;font-size:10px;
+    color:var(--mist);line-height:1.75;backdrop-filter:blur(8px);pointer-events:none;
+  }
+  #hud b{color:var(--brass);font-weight:500}
+
+  /* toast */
+  #toast{
+    position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-80px);
+    background:var(--slate);border:1px solid #3a424f;border-radius:6px;
+    padding:11px 18px;font-size:12px;z-index:60;transition:transform .3s;
+    box-shadow:0 8px 28px rgba(0,0,0,.5);max-width:80vw;text-align:center;
+  }
+  #toast.show{transform:translateX(-50%) translateY(0)}
+  #toast.err{border-color:var(--alert);color:#ffb9a8}
+
+  /* botão VR do three.js */
+  #VRButton{
+    font-family:'Space Grotesk',sans-serif!important;
+    letter-spacing:.06em!important;
+  }
+
+  @media(max-width:640px){
+    #tab{left:auto;right:16px}
+    #tab.closed{left:auto;right:16px}
+    #hud{display:none}
+  }
+</style>
+</head>
+<body>
+
+<div id="panel">
+  <div class="brand">
+    <h1>Pas<span>seio</span></h1>
+    <p>VISUALIZADOR ARQUITETÔNICO · WEBXR</p>
+  </div>
+
+  <div class="scroll">
+
+    <div class="block">
+      <div class="block-label">01 — Modelo</div>
+      <div id="drop">
+        <div class="big">Solte um arquivo .glb aqui</div>
+        <div class="small">ou toque para escolher<br>.glb · .gltf</div>
+      </div>
+      <input type="file" id="file" accept=".glb,.gltf">
+      <div class="url-row">
+        <input type="text" id="url" placeholder="ou cole uma URL .glb">
+        <button id="urlgo">Abrir</button>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="block-label">02 — Luz do dia</div>
+      <div class="presets" id="presets">
+        <div class="preset" data-p="amanhecer">Amanhecer</div>
+        <div class="preset active" data-p="meiodia">Meio-dia</div>
+        <div class="preset" data-p="tarde">Fim de tarde</div>
+        <div class="preset" data-p="nublado">Nublado</div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="ctl">
+        <div class="ctl-head"><label>Altura do sol</label><output id="o-elev">45°</output></div>
+        <input type="range" id="elev" min="1" max="89" value="45" step="1">
+      </div>
+      <div class="ctl">
+        <div class="ctl-head"><label>Orientação</label><output id="o-azim">135°</output></div>
+        <input type="range" id="azim" min="0" max="360" value="135" step="1">
+      </div>
+      <div class="ctl">
+        <div class="ctl-head"><label>Exposição</label><output id="o-exp">1.00</output></div>
+        <input type="range" id="exp" min="0.2" max="3" value="1" step="0.05">
+      </div>
+      <div class="ctl">
+        <div class="ctl-head"><label>Névoa atmosférica</label><output id="o-haze">2.0</output></div>
+        <input type="range" id="haze" min="0" max="12" value="2" step="0.2">
+      </div>
+      <div class="tog on" id="t-shadow"><span>Sombras projetadas</span><span class="sw"></span></div>
+    </div>
+
+    <div class="block">
+      <div class="block-label">03 — Corpo e movimento</div>
+      <div class="ctl">
+        <div class="ctl-head"><label>Altura dos olhos</label><output id="o-eye">1.65 m</output></div>
+        <input type="range" id="eye" min="1.2" max="2.0" value="1.65" step="0.01">
+      </div>
+      <div class="ctl">
+        <div class="ctl-head"><label>Velocidade</label><output id="o-spd">2.4 m/s</output></div>
+        <input type="range" id="spd" min="0.6" max="8" value="2.4" step="0.1">
+      </div>
+      <div class="ctl">
+        <div class="ctl-head"><label>Escala do modelo</label><output id="o-scale">1.00×</output></div>
+        <input type="range" id="scale" min="-2" max="2" value="0" step="0.01">
+      </div>
+      <div class="tog on" id="t-collide"><span>Colisão com o cenário</span><span class="sw"></span></div>
+      <div class="tog on" id="t-gravity"><span>Gravidade</span><span class="sw"></span></div>
+      <div class="tog on" id="t-snap"><span>Giro em passos (conforto)</span><span class="sw"></span></div>
+    </div>
+
+    <div class="block">
+      <div class="block-label">04 — Qualidade <b id="q-mode">PC</b></div>
+      <div class="ctl">
+        <div class="ctl-head"><label>Resolução</label><output id="o-res">100%</output></div>
+        <input type="range" id="res" min="50" max="150" value="100" step="5">
+      </div>
+      <div class="tog" id="t-fov"><span>Foveação (mais FPS no Quest)</span><span class="sw"></span></div>
+    </div>
+
+    <div class="block" style="border-bottom:none">
+      <button class="act primary" id="enter" disabled>Entrar em VR</button>
+      <button class="act ghost" id="respawn">Voltar ao início</button>
+    </div>
+  </div>
+
+  <div class="stat">
+    <div class="row"><span><span class="dot" id="d-xr"></span>WebXR</span><b id="s-xr">verificando</b></div>
+    <div class="row"><span>Malhas / triângulos</span><b id="s-tris">—</b></div>
+    <div class="row"><span>Colisores</span><b id="s-col">—</b></div>
+    <div class="row"><span>FPS</span><b id="s-fps">—</b></div>
+  </div>
+</div>
+
+<button id="tab">‹</button>
+
+<div id="hud">
+  <div><b>WASD</b> andar · <b>Shift</b> correr</div>
+  <div><b>Mouse</b> olhar (clique na cena)</div>
+  <div><b>Espaço</b> pular · <b>R</b> reiniciar</div>
+  <div style="margin-top:6px"><b>VR:</b> analógico esq. andar · dir. girar</div>
+</div>
+
+<div id="load"><div class="ring"></div><p id="load-txt">Carregando modelo…</p></div>
+<div id="toast"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+import RAPIER from 'https://cdn.skypack.dev/@dimforge/rapier3d-compat';
+
+/* ══════════════ estado ══════════════ */
+const S = {
+  eye:1.65, speed:2.4, scale:1, collide:true, gravity:true, snap:true,
+  shadows:true, exposure:1, elev:45, azim:135, haze:2, res:1, foveation:false,
+  spawn:new THREE.Vector3(0,0,0), ready:false, inVR:false
+};
+
+/* ══════════════ renderer / cena ══════════════ */
+const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local-floor');
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, 0.08, 3000);
+
+// dolly = corpo do visitante. A câmera VR herda esta transformação.
+const dolly = new THREE.Group();
+dolly.add(camera);
+scene.add(dolly);
+camera.position.set(0, S.eye, 0);
+
+/* ── céu físico + luz solar ── */
+const sky = new Sky();
+sky.scale.setScalar(8000);
+scene.add(sky);
+
+const sun = new THREE.DirectionalLight(0xffffff, 3.2);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far = 220;
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+
+const bounce = new THREE.HemisphereLight(0xbcd4ff, 0x6b5a45, 0.45);
+scene.add(bounce);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+const skyScene = new THREE.Scene();
+let envRT = null;
+
+function updateSky(){
+  const u = sky.material.uniforms;
+  u.turbidity.value = S.haze;
+  u.rayleigh.value  = 1.4;
+  u.mieCoefficient.value = 0.005;
+  u.mieDirectionalG.value = 0.8;
+
+  const phi   = THREE.MathUtils.degToRad(90 - S.elev);
+  const theta = THREE.MathUtils.degToRad(S.azim);
+  const dir   = new THREE.Vector3().setFromSphericalCoords(1, phi, theta);
+  u.sunPosition.value.copy(dir);
+
+  // distância do sol acompanha o tamanho da cena para as sombras cobrirem tudo
+  const d = sceneRadius > 0 ? Math.max(30, sceneRadius * 1.6) : 60;
+  sun.position.copy(dir).multiplyScalar(d);
+  sun.target.position.set(0,0,0);
+
+  const c = sun.shadow.camera;
+  const s = sceneRadius > 0 ? Math.max(12, sceneRadius * 1.15) : 30;
+  c.left=-s; c.right=s; c.top=s; c.bottom=-s; c.far = d*2.4;
+  c.updateProjectionMatrix();
+
+  // sol baixo = luz mais quente e fraca
+  const t = Math.max(0, Math.min(1, S.elev/45));
+  sun.color.setHSL(0.09 - 0.02*t, 0.55*(1-t)+0.02, 0.5);
+  sun.intensity = 0.6 + 3.1*t;
+  bounce.intensity = 0.22 + 0.4*t;
+
+  // reflexos PBR gerados a partir do próprio céu
+  skyScene.add(sky);
+  if (envRT) envRT.dispose();
+  envRT = pmrem.fromScene(skyScene);
+  scene.environment = envRT.texture;
+  scene.add(sky);
+}
+
+/* ══════════════ carregadores ══════════════ */
+const draco = new DRACOLoader().setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
+const ktx2  = new KTX2Loader().setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/').detectSupport(renderer);
+const gltf  = new GLTFLoader().setDRACOLoader(draco).setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
+
+/* ══════════════ física ══════════════ */
+let world=null, body=null, capsule=null, charCtl=null;
+let modelRoot=null, sceneRadius=0, colliderCount=0;
+const CAP_R = 0.28, CAP_H = 0.9; // cápsula ≈ 1,46 m + raio
+
+await RAPIER.init();
+world = new RAPIER.World({ x:0, y:-9.81, z:0 });
+charCtl = world.createCharacterController(0.02);
+charCtl.setMaxSlopeClimbAngle(52*Math.PI/180);
+charCtl.setMinSlopeSlideAngle(32*Math.PI/180);
+charCtl.enableAutostep(0.42, 0.22, true);   // sobe degraus de até 42 cm
+charCtl.enableSnapToGround(0.45);
+charCtl.setApplyImpulsesToDynamicBodies(true);
+
+function makeBody(){
+  if (body) world.removeRigidBody(body);
+  const desc = RAPIER.RigidBodyDesc.kinematicPositionBased()
+      .setTranslation(S.spawn.x, S.spawn.y + CAP_H/2 + CAP_R + 0.05, S.spawn.z);
+  body = world.createRigidBody(desc);
+  capsule = world.createCollider(RAPIER.ColliderDesc.capsule(CAP_H/2, CAP_R), body);
+}
+makeBody();
+
+function buildColliders(root){
+  colliderCount = 0;
+  root.updateMatrixWorld(true);
+  root.traverse(o=>{
+    if(!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+    let g = o.geometry;
+    if(!g.index){
+      const n = g.attributes.position.count;
+      const idx = new Uint32Array(n);
+      for(let i=0;i<n;i++) idx[i]=i;
+      g = g.clone(); g.setIndex(new THREE.BufferAttribute(idx,1));
+    }
+    const pos = g.attributes.position;
+    const verts = new Float32Array(pos.count*3);
+    const v = new THREE.Vector3();
+    for(let i=0;i<pos.count;i++){
+      v.fromBufferAttribute(pos,i).applyMatrix4(o.matrixWorld);
+      verts[i*3]=v.x; verts[i*3+1]=v.y; verts[i*3+2]=v.z;
+    }
+    const idx = new Uint32Array(g.index.array);
+    try{
+      world.createCollider(RAPIER.ColliderDesc.trimesh(verts, idx));
+      colliderCount++;
+    }catch(e){ /* geometria degenerada — ignora */ }
+  });
+  $('s-col').textContent = colliderCount;
+}
+
+function clearColliders(){
+  const dead=[];
+  world.forEachCollider(c=>{ if(c.parent()!==body) dead.push(c.handle); });
+  dead.forEach(h=>{ const c=world.getCollider(h); if(c) world.removeCollider(c,false); });
+  colliderCount = 0;
+}
+
+/* ══════════════ carregar modelo ══════════════ */
+function disposeModel(){
+  if(!modelRoot) return;
+  modelRoot.traverse(o=>{
+    if(o.isMesh){
+      o.geometry?.dispose();
+      const m = Array.isArray(o.material)?o.material:[o.material];
+      m.forEach(x=>{ if(!x) return;
+        ['map','normalMap','roughnessMap','metalnessMap','aoMap','emissiveMap']
+          .forEach(k=>x[k]?.dispose());
+        x.dispose();
+      });
+    }
+  });
+  scene.remove(modelRoot);
+  modelRoot = null;
+}
+
+function ingest(gltfScene){
+  disposeModel();
+  clearColliders();
+
+  modelRoot = gltfScene;
+  scene.add(modelRoot);
+
+  // normaliza posição: apoia o modelo no chão e centraliza em XZ
+  modelRoot.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(modelRoot);
+  const size = box.getSize(new THREE.Vector3());
+  const ctr  = box.getCenter(new THREE.Vector3());
+  modelRoot.position.sub(new THREE.Vector3(ctr.x, box.min.y, ctr.z));
+  sceneRadius = Math.max(size.x, size.z) * 0.5;
+
+  let tris = 0, meshes = 0;
+  modelRoot.traverse(o=>{
+    if(!o.isMesh) return;
+    meshes++;
+    o.castShadow = o.receiveShadow = S.shadows;
+    const g = o.geometry;
+    tris += g.index ? g.index.count/3 : g.attributes.position.count/3;
+    const mats = Array.isArray(o.material)?o.material:[o.material];
+    mats.forEach(m=>{
+      if(!m) return;
+      m.envMapIntensity = 1.0;
+      if(m.map) m.map.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      // corrige modelos exportados com dupla-face desligada por engano em paredes finas
+      if(m.transparent && m.opacity === 1) m.transparent = false;
+    });
+  });
+  $('s-tris').textContent = `${meshes} / ${Math.round(tris).toLocaleString('pt-BR')}`;
+
+  applyScale();
+  buildColliders(modelRoot);
+
+  // ponto de partida: borda da cena, olhando para o centro
+  S.spawn.set(0, 0.05, Math.max(2, sceneRadius*0.85));
+  makeBody();
+  dolly.rotation.set(0,0,0);
+  yaw = Math.PI;
+  updateSky();
+
+  S.ready = true;
+  $('enter').disabled = !xrOK;
+  toast('Modelo carregado — pronto para explorar');
+}
+
+function applyScale(){
+  if(!modelRoot) return;
+  modelRoot.scale.setScalar(S.scale);
+  modelRoot.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(modelRoot);
+  const size = box.getSize(new THREE.Vector3());
+  sceneRadius = Math.max(size.x, size.z)*0.5;
+}
+
+function loadFromURL(url, revoke){
+  overlay(true,'Carregando modelo…');
+  gltf.load(url,
+    g=>{ overlay(false); if(revoke) URL.revokeObjectURL(url); ingest(g.scene); },
+    p=>{ if(p.total) $('load-txt').textContent =
+          `Carregando… ${Math.round(p.loaded/p.total*100)}%`; },
+    e=>{ overlay(false); if(revoke) URL.revokeObjectURL(url);
+         console.error(e); toast('Não foi possível abrir esse arquivo', true); }
+  );
+}
+
+/* ══════════════ movimento ══════════════ */
+let yaw = 0, pitch = 0, vy = 0, grounded = false, snapCooldown = 0;
+const keys = {};
+addEventListener('keydown', e=>{
+  keys[e.code]=true;
+  if(e.code==='KeyR') respawn();
+  if(e.code==='Space') e.preventDefault();
+});
+addEventListener('keyup', e=>keys[e.code]=false);
+
+renderer.domElement.addEventListener('click', ()=>{
+  if(!renderer.xr.isPresenting) renderer.domElement.requestPointerLock();
+});
+addEventListener('mousemove', e=>{
+  if(document.pointerLockElement !== renderer.domElement) return;
+  yaw   -= e.movementX * 0.0022;
+  pitch -= e.movementY * 0.0022;
+  pitch  = Math.max(-1.35, Math.min(1.35, pitch));
+});
+
+function respawn(){
+  vy = 0;
+  body.setNextKinematicTranslation({
+    x:S.spawn.x, y:S.spawn.y + CAP_H/2 + CAP_R + 0.05, z:S.spawn.z
+  });
+  body.setTranslation({
+    x:S.spawn.x, y:S.spawn.y + CAP_H/2 + CAP_R + 0.05, z:S.spawn.z
+  }, true);
+}
+
+const gpAxes = { move:[0,0], turn:[0,0], jump:false, run:false };
+function pollControllers(){
+  gpAxes.move=[0,0]; gpAxes.turn=[0,0]; gpAxes.jump=false; gpAxes.run=false;
+  const s = renderer.xr.getSession();
+  if(!s) return;
+  for(const src of s.inputSources){
+    const g = src.gamepad;
+    if(!g || !g.axes) continue;
+    const ax = g.axes.length>=4 ? [g.axes[2],g.axes[3]] : [g.axes[0],g.axes[1]];
+    const dz = v => Math.abs(v)<0.13 ? 0 : v;
+    if(src.handedness==='left'){
+      gpAxes.move = [dz(ax[0]), dz(ax[1])];
+      if(g.buttons[1]?.pressed) gpAxes.run = true;   // grip
+    } else if(src.handedness==='right'){
+      gpAxes.turn = [dz(ax[0]), dz(ax[1])];
+      if(g.buttons[4]?.pressed) gpAxes.jump = true;  // botão A
+    }
+  }
+}
+
+const fwd = new THREE.Vector3(), right = new THREE.Vector3(), wish = new THREE.Vector3();
+const headQ = new THREE.Quaternion();
+
+function move(dt){
+  if(!body) return;
+  const vr = renderer.xr.isPresenting;
+  if(vr) pollControllers();
+
+  /* ── direção de referência ── */
+  if(vr){
+    // anda para onde a cabeça está olhando
+    const xrCam = renderer.xr.getCamera();
+    xrCam.getWorldQuaternion(headQ);
+    fwd.set(0,0,-1).applyQuaternion(headQ); fwd.y=0; fwd.normalize();
+    right.set(1,0,0).applyQuaternion(headQ); right.y=0; right.normalize();
+  } else {
+    fwd.set(Math.sin(yaw)*-1, 0, Math.cos(yaw)*-1).normalize();
+    right.set(Math.cos(yaw), 0, -Math.sin(yaw)).normalize();
+  }
+
+  /* ── intenção de movimento ── */
+  wish.set(0,0,0);
+  let run = false;
+  if(vr){
+    wish.addScaledVector(right, gpAxes.move[0]);
+    wish.addScaledVector(fwd,  -gpAxes.move[1]);
+    run = gpAxes.run;
+    // giro
+    if(S.snap){
+      snapCooldown -= dt;
+      if(Math.abs(gpAxes.turn[0])>0.7 && snapCooldown<=0){
+        dolly.rotateY(-Math.sign(gpAxes.turn[0]) * Math.PI/6);
+        snapCooldown = 0.28;
+      }
+    } else {
+      dolly.rotateY(-gpAxes.turn[0] * 2.0 * dt);
+    }
+  } else {
+    if(keys.KeyW||keys.ArrowUp)    wish.add(fwd);
+    if(keys.KeyS||keys.ArrowDown)  wish.sub(fwd);
+    if(keys.KeyD||keys.ArrowRight) wish.add(right);
+    if(keys.KeyA||keys.ArrowLeft)  wish.sub(right);
+    run = keys.ShiftLeft||keys.ShiftRight;
+  }
+  if(wish.lengthSq()>1) wish.normalize();
+
+  const spd = S.speed * (run?2.1:1);
+  const step = new THREE.Vector3(wish.x*spd*dt, 0, wish.z*spd*dt);
+
+  /* ── vertical ── */
+  if(S.gravity){
+    const wantJump = vr ? gpAxes.jump : keys.Space;
+    if(grounded && wantJump) vy = 4.0;
+    vy -= 9.81*dt;
+    vy = Math.max(vy, -35);
+    step.y = vy*dt;
+  } else {
+    let up = 0;
+    if(vr) up = -gpAxes.turn[1];
+    else { if(keys.Space) up = 1; if(keys.ControlLeft) up = -1; }
+    step.y = up * spd * dt;
+    vy = 0;
+  }
+
+  /* ── resolve colisão ── */
+  let out;
+  if(S.collide && colliderCount>0){
+    charCtl.computeColliderMovement(capsule, step);
+    out = charCtl.computedMovement();
+    grounded = charCtl.computedGrounded();
+    if(grounded && vy<0) vy = 0;
+  } else {
+    out = step; grounded = false;
+    if(!S.gravity) vy = 0;
+  }
+
+  const t = body.translation();
+  const next = { x:t.x+out.x, y:t.y+out.y, z:t.z+out.z };
+  if(next.y < -400) return respawn();
+  body.setNextKinematicTranslation(next);
+
+  /* ── sincroniza o corpo visual ── */
+  dolly.position.set(next.x, next.y - (CAP_H/2 + CAP_R), next.z);
+  if(!vr){
+    camera.position.set(0, S.eye, 0);
+    camera.rotation.set(pitch, 0, 0);
+    dolly.rotation.set(0, yaw, 0);
+  } else {
+    camera.position.set(0,0,0);
+    camera.rotation.set(0,0,0);
+  }
+}
+
+/* ══════════════ loop ══════════════ */
+let last = performance.now(), fpsAcc = 0, fpsN = 0;
+renderer.setAnimationLoop(()=>{
+  const now = performance.now();
+  let dt = (now-last)/1000; last = now;
+  dt = Math.min(dt, 0.05);
+
+  if(S.ready){ move(dt); world.step(); }
+
+  fpsAcc += dt; fpsN++;
+  if(fpsAcc >= 0.5){
+    $('s-fps').textContent = Math.round(fpsN/fpsAcc);
+    fpsAcc = 0; fpsN = 0;
+  }
+  renderer.render(scene, camera);
+});
+
+/* ══════════════ interface ══════════════ */
+function $(id){ return document.getElementById(id); }
+function overlay(on, txt){ $('load').classList.toggle('on', on); if(txt) $('load-txt').textContent = txt; }
+let toastT;
+function toast(msg, err=false){
+  const t = $('toast');
+  t.textContent = msg; t.classList.toggle('err', err); t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove('show'), 3200);
+}
+
+// arquivos
+$('drop').onclick = ()=>$('file').click();
+$('file').onchange = e=>{
+  const f = e.target.files[0];
+  if(f) loadFromURL(URL.createObjectURL(f), true);
+};
+const dz = $('drop');
+['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev, e=>{
+  e.preventDefault(); dz.classList.add('over');
+}));
+['dragleave','drop'].forEach(ev=>dz.addEventListener(ev, e=>{
+  e.preventDefault(); dz.classList.remove('over');
+}));
+dz.addEventListener('drop', e=>{
+  const f = e.dataTransfer.files[0];
+  if(f) loadFromURL(URL.createObjectURL(f), true);
+});
+addEventListener('dragover', e=>e.preventDefault());
+addEventListener('drop', e=>e.preventDefault());
+
+$('urlgo').onclick = ()=>{
+  const u = $('url').value.trim();
+  if(u) loadFromURL(u, false);
+};
+$('url').addEventListener('keydown', e=>{ if(e.key==='Enter') $('urlgo').click(); });
+
+// sliders
+function bind(id, out, fmt, fn){
+  const el = $(id);
+  const apply = ()=>{ const v = parseFloat(el.value); $(out).textContent = fmt(v); fn(v); };
+  el.addEventListener('input', apply);
+  apply();
+}
+bind('elev','o-elev', v=>v+'°',        v=>{ S.elev=v; updateSky(); });
+bind('azim','o-azim', v=>v+'°',        v=>{ S.azim=v; updateSky(); });
+bind('exp','o-exp',   v=>v.toFixed(2), v=>{ S.exposure=v; renderer.toneMappingExposure=v; });
+bind('haze','o-haze', v=>v.toFixed(1), v=>{ S.haze=v; updateSky(); });
+bind('eye','o-eye',   v=>v.toFixed(2)+' m', v=>{ S.eye=v; });
+bind('spd','o-spd',   v=>v.toFixed(1)+' m/s', v=>{ S.speed=v; });
+bind('scale','o-scale', v=>Math.pow(2,v).toFixed(2)+'×', v=>{
+  S.scale = Math.pow(2,v);
+  if(modelRoot){ applyScale(); clearColliders(); buildColliders(modelRoot); updateSky(); }
+});
+bind('res','o-res', v=>v+'%', v=>{
+  S.res = v/100;
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2) * S.res);
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// toggles
+function toggle(id, init, fn){
+  const el = $(id);
+  let on = init;
+  el.classList.toggle('on', on);
+  el.onclick = ()=>{ on=!on; el.classList.toggle('on', on); fn(on); };
+}
+toggle('t-shadow', true, v=>{
+  S.shadows = v; sun.castShadow = v;
+  modelRoot?.traverse(o=>{ if(o.isMesh) o.castShadow = o.receiveShadow = v; });
+});
+toggle('t-collide', true, v=>S.collide=v);
+toggle('t-gravity', true, v=>{ S.gravity=v; vy=0; });
+toggle('t-snap',    true, v=>S.snap=v);
+toggle('t-fov',    false, v=>{ S.foveation=v; renderer.xr.setFoveation(v?1:0); });
+
+$('respawn').onclick = respawn;
+
+// painel
+$('tab').onclick = ()=>{
+  const p = $('panel'), t = $('tab');
+  const closed = p.classList.toggle('hidden');
+  t.classList.toggle('closed', closed);
+  t.textContent = closed ? '›' : '‹';
+};
+
+// VR
+let xrOK = false;
+const vrBtn = VRButton.createButton(renderer);
+vrBtn.style.display = 'none';
+document.body.appendChild(vrBtn);
+
+if(navigator.xr){
+  navigator.xr.isSessionSupported('immersive-vr').then(ok=>{
+    xrOK = ok;
+    $('d-xr').classList.toggle('ok', ok);
+    $('s-xr').textContent = ok ? 'disponível' : 'sem headset';
+    $('enter').disabled = !(ok && S.ready);
+    if(!ok) $('enter').textContent = 'Headset não detectado';
+  });
+} else {
+  $('s-xr').textContent = 'não suportado';
+  $('enter').textContent = 'WebXR indisponível';
+}
+$('enter').onclick = ()=>vrBtn.click();
+
+renderer.xr.addEventListener('sessionstart', ()=>{
+  S.inVR = true;
+  $('q-mode').textContent = 'QUEST';
+  renderer.xr.setFoveation(S.foveation?1:0);
+});
+renderer.xr.addEventListener('sessionend', ()=>{
+  S.inVR = false;
+  $('q-mode').textContent = 'PC';
+});
+
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ══════════════ presets de luz ══════════════ */
+const PRESETS = {
+  amanhecer:{ elev:8,  azim:95,  exp:1.15, haze:4.5 },
+  meiodia:  { elev:62, azim:135, exp:1.00, haze:2.0 },
+  tarde:    { elev:14, azim:255, exp:1.25, haze:5.5 },
+  nublado:  { elev:48, azim:180, exp:1.10, haze:11  }
+};
+document.querySelectorAll('.preset').forEach(p=>{
+  p.onclick = ()=>{
+    document.querySelectorAll('.preset').forEach(x=>x.classList.remove('active'));
+    p.classList.add('active');
+    const c = PRESETS[p.dataset.p];
+    $('elev').value=c.elev; $('azim').value=c.azim;
+    $('exp').value=c.exp;   $('haze').value=c.haze;
+    ['elev','azim','exp','haze'].forEach(id=>
+      $(id).dispatchEvent(new Event('input')));
+  };
+});
+
+/* ══════════════ cena inicial de demonstração ══════════════ */
+function demoScene(){
+  const g = new THREE.Group();
+  const grid = new THREE.Mesh(
+    new THREE.PlaneGeometry(60,60),
+    new THREE.MeshStandardMaterial({ color:0x6d7580, roughness:0.95 })
+  );
+  grid.rotation.x = -Math.PI/2;
+  g.add(grid);
+
+  const mat = new THREE.MeshStandardMaterial({ color:0xcfc8bd, roughness:0.7 });
+  for(let i=0;i<5;i++){
+    const h = 3 + i*1.6;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(3.4, h, 3.4), mat);
+    b.position.set(Math.cos(i/5*Math.PI*2)*9, h/2, Math.sin(i/5*Math.PI*2)*9);
+    g.add(b);
+  }
+  const stepMat = new THREE.MeshStandardMaterial({ color:0x9aa3ad, roughness:0.85 });
+  for(let i=0;i<6;i++){
+    const s = new THREE.Mesh(new THREE.BoxGeometry(3, 0.22, 0.9), stepMat);
+    s.position.set(0, 0.11 + i*0.22, -3 - i*0.9);
+    g.add(s);
+  }
+  ingest(g);
+  toast('Cena de demonstração — carregue seu .glb quando quiser');
+}
+updateSky();
+demoScene();
+</script>
+</body>
+</html>
